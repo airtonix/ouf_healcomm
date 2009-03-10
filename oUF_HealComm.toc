@@ -1,0 +1,19 @@
+## Interface: 30000
+## Title: oUF HealComm
+## Notes: Adds incoming healing bars to oUF frames.
+## Author: krage
+## Version: 1.1
+## X-Category: UnitFrame
+## X-eMail: audion@gmail.com
+## Dependencies: oUF
+## DefaultState: enabled
+
+## OptionalDeps: LibHealComm-3.0
+## X-Embeds: LibHealComm-3.0
+
+Libs\LibHealComm-3.0\LibStub\LibStub.lua
+Libs\LibHealComm-3.0\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\LibHealComm-3.0\LibHealComm-3.0.lua
+
+oUF_HealComm.lua
+

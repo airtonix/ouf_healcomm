@@ -1,5 +1,5 @@
 ﻿local MAJOR_VERSION = "LibHealComm-3.0";
-local MINOR_VERSION = 90000 + tonumber(("$Revision: 44 $"):match("%d+"));
+local MINOR_VERSION = 90000 + tonumber(("$Revision: 48 $"):match("%d+"));
 
 local lib = LibStub:NewLibrary(MAJOR_VERSION, MINOR_VERSION);
 if not lib then return end
@@ -27,9 +27,9 @@ lib.EventFrame:RegisterEvent("UNIT_AURA");
 lib.EventFrame:RegisterEvent("UNIT_TARGET");
 lib.EventFrame:RegisterEvent("PLAYER_TARGET_CHANGED");
 lib.EventFrame:RegisterEvent("PLAYER_FOCUS_CHANGED");
-lib.EventFrame:RegisterEvent("GLYPH_ADDED")
-lib.EventFrame:RegisterEvent("GLYPH_REMOVED")
-lib.EventFrame:RegisterEvent("GLYPH_UPDATED")
+lib.EventFrame:RegisterEvent("GLYPH_ADDED");
+lib.EventFrame:RegisterEvent("GLYPH_REMOVED");
+lib.EventFrame:RegisterEvent("GLYPH_UPDATED");
 
 -- For keeping track of versions
 lib.EventFrame:RegisterEvent("PARTY_MEMBERS_CHANGED");
@@ -152,32 +152,24 @@ local function unitFullName(unit)
     end
 end
 
-local function extractRealm(name)
-	return name:match("^[^%-]+%-(.+)$");
+local function extractRealm(fullName)
+    return fullName:match("^[^%-]+%-(.+)$");
 end
 
-local function fixRealm(name, defaultRealm)
-	if defaultRealm == playerRealm or defaultRealm == "" then
-		defaultRealm = nil;
-	end
-	
-	local targetName, targetRealm = name:match("^([^%-]+)%-(.*)$");
-	
-	targetName = targetName or name;
-	
-	if defaultRealm and ( not targetRealm or targetRealm == "" ) then
-		targetRealm = defaultRealm;
-	end
-	
-	if targetRealm == playerRealm or targetRealm == "" then
-		targetRealm = nil;
-	end
-	
-	if targetRealm then
-		return targetName .. "-" .. targetRealm;
-	else
-		return targetName;
-	end
+-- Convert a remotely generated fully qualified name to
+-- a local fully qualified name.
+local function convertRealm(fullName, remoteRealm)
+    if (remoteRealm) then
+        local name, realm = fullName:match("^([^%-]+)%-(.+)$");
+        if (not realm) then
+            -- Apply remote realm if there is no realm on the target
+            return fullName .. "-" .. remoteRealm;
+        elseif (realm == playerRealm) then
+            -- Strip realm if it is equal to the local realm
+            return name;
+        end
+    end
+    return fullName;
 end
 
 local function commSend(contents, distribution, target)
@@ -272,9 +264,10 @@ end
 
 local healingBuffs =
 {
-    [GetSpellInfo(706)] = 1.20,   -- Demon Armor
+    [GetSpellInfo(706)]   = 1.20, -- Demon Armor
     [GetSpellInfo(45234)] = function (count, rank) return (1.0 + (0.04 + 0.03 * (rank - 1)) * count) end, -- Focused Will
     [GetSpellInfo(34123)] = 1.06, -- Tree of Life
+    [GetSpellInfo(58549)] = function (count, rank, texture) return ((texture == "Interface\\Icons\\Ability_Warrior_StrengthOfArms") and (1.18 ^ count) or 1.0) end, -- Tenacity (Wintergrasp)
 }
 
 local healingDebuffs =
@@ -284,7 +277,6 @@ local healingDebuffs =
     [GetSpellInfo(30423)] = function (count) return (1.0 - count * 0.01) end, -- Nether Portal - Dominance (Netherspite - Karazhan)
     [GetSpellInfo(13218)] = function (count) return (1.0 - count * 0.10) end, -- Wound Poison
     [GetSpellInfo(19434)] = 0.50,   -- Aimed Shot
---    [GetSpellInfo(31306)] = 0.25,   -- Carrion Swarm (Anetheron - Mount Hyjal) - TODO: This affects the casting part, not the receiving part
     [GetSpellInfo(12294)] = 0.50,   -- Mortal Strike
     [GetSpellInfo(40599)] = 0.50,   -- Arcing Smash (Gurtogg Bloodboil)
     [GetSpellInfo(23169)] = 0.50,   -- Brood Affliction: Green (Chromaggus)
@@ -336,7 +328,7 @@ local function calculateHealModifier(unit)
         local mark = healingBuffs[name];
         if (mark) then
             if (type(mark) == "function") then
-                mark = mark(count, rank and tonumber(rank:match("(%d+)")));
+                mark = mark(count, rank and tonumber(rank:match("(%d+)")), texture);
             end
             modifier = modifier * mark;
         end
@@ -1239,7 +1231,9 @@ function lib:CHAT_MSG_ADDON(prefix, msg, distribution, sender)
             local endTime = select(6, UnitCastingInfo(sender));
 
             if (endTime) then
-                targetName = fixRealm(targetName, extractRealm(sender));
+                if (distribution == "BATTLEGROUND") then
+                    targetName = convertRealm(targetName, extractRealm(sender));
+                end
                 endTime = endTime / 1000;
                 entryUpdate(sender, targetName, healSize, endTime);
                 self.Callbacks:Fire("HealComm_DirectHealStart", sender, healSize, endTime, targetName);
@@ -1261,9 +1255,11 @@ function lib:CHAT_MSG_ADDON(prefix, msg, distribution, sender)
             local endTime = select(6, UnitCastingInfo(sender));
 
             if (endTime) then
-                local senderRealm = extractRealm(sender);
-                for k, targetName in pairs(targetNames) do
-                    targetNames[k] = fixRealm(targetName, senderRealm);
+                if (distribution == "BATTLEGROUND") then
+                    local senderRealm = extractRealm(sender);
+                    for k, targetName in pairs(targetNames) do
+                        targetNames[k] = convertRealm(targetName, senderRealm);
+                    end
                 end
                 endTime = endTime / 1000;
                 tinsert(targetNames, 1, sender);
@@ -1358,6 +1354,9 @@ function lib:PLAYER_ALIVE()
     -- prior to this event firing (no messages sent and InBattlegroundOrArena and InRaidOrParty
     -- are probably not correctly initialised).
     lib:Initialise();
+
+    -- Only receive once
+    self.EventFrame:UnregisterEvent("PLAYER_ALIVE");
 end
 
 function lib:PLAYER_ENTERING_WORLD()

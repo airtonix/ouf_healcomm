@@ -69,7 +69,7 @@ local updateHealCommBar = function(frame, unit)
     local curHP = UnitHealth(unit)
     local maxHP = UnitHealthMax(unit)
     local percHP = curHP / maxHP
-
+	local parentBar = frame.hcbParent
     local incHeals = select(2, healcomm:UnitIncomingHealGet(unit, GetTime())) or 0
 
     --add player's own heals if casting on this unit
@@ -89,11 +89,11 @@ local updateHealCommBar = function(frame, unit)
     else
         frame.HealCommBar:Show()
     end
-
+	
     percInc = incHeals / maxHP
-    h = frame.Health:GetHeight()
-    w = frame.Health:GetWidth()
-    orient = frame.Health:GetOrientation()
+    h = parentBar:GetHeight()
+    w = parentBar:GetWidth()
+    orient = parentBar:GetOrientation()
     
     fHcb = frame.HealCommBar
     fHcb:ClearAllPoints()
@@ -102,11 +102,11 @@ local updateHealCommBar = function(frame, unit)
     if(orient=="VERTICAL")then
 		fHcb:SetHeight(percInc * h)
 		fHcb:SetWidth(w)
-		fHcb:SetPoint("BOTTOM", frame.Health, "BOTTOM", 0, h * percHP)
+		fHcb:SetPoint("BOTTOM", parentBar, "BOTTOM", 0, h * percHP)
 	else
 		fHcb:SetWidth(percInc * w)
 		fHcb:SetHeight(h)
-		fHcb:SetPoint("LEFT", frame.Health, "LEFT", w * percHP,0)
+		fHcb:SetPoint("LEFT", parentBar, "LEFT", w * percHP,0)
 	end
 	if(fHcb.Amount)then
 		fHcb.Amount:SetText(numberize(incHeals))
@@ -132,28 +132,35 @@ end
 
 local function hook(frame)
 	if frame.ignoreHealComm then return end
-	
+	if not frame.hcbParent then 
+		if frame.Health then
+			frame.hcbParent = frame.Health
+		else
+			return 
+		end
+	end
+	local parentBar = frame.hcbParent
     --create heal bar here and set initial values
 	local hcb = CreateFrame"StatusBar"
-    if(frame.Health:GetOrientation() =="VERTICAL")then
-		hcb:SetWidth(frame.Health:GetWidth()) -- same height as health bar
+    if(parentBar:GetOrientation() =="VERTICAL")then
+		hcb:SetWidth(parentBar:GetWidth()) -- same height as health bar
 		hcb:SetHeight(4) --no initial width
-		hcb:SetStatusBarTexture(frame.Health:GetStatusBarTexture():GetTexture())
+		hcb:SetStatusBarTexture(parentBar:GetStatusBarTexture():GetTexture())
 		hcb:SetStatusBarColor(color.r, color.g, color.b, color.a)
 		hcb:SetParent(frame)
-		hcb:SetPoint("BOTTOMLEFT", frame.Health, "TOPLEFT",0,0) --attach to immediate right of health bar to start
+		hcb:SetPoint("BOTTOMLEFT", parentBar, "TOPLEFT",0,0) --attach to immediate right of health bar to start
 		hcb:Hide() --hide it for now
 	else
-		hcb:SetHeight(frame.Health:GetHeight()) -- same height as health bar
+		hcb:SetHeight(parentBar:GetHeight()) -- same height as health bar
 		hcb:SetWidth(4) --no initial width
-		hcb:SetStatusBarTexture(frame.Health:GetStatusBarTexture():GetTexture())
+		hcb:SetStatusBarTexture(parentBar:GetStatusBarTexture():GetTexture())
 		hcb:SetStatusBarColor(color.r, color.g, color.b, color.a)
 		hcb:SetParent(frame)
-		hcb:SetPoint("LEFT", frame.Health, "RIGHT",0,0) --attach to immediate right of health bar to start
+		hcb:SetPoint("LEFT", parentBar, "RIGHT",0,0) --attach to immediate right of health bar to start
 		hcb:Hide() --hide it for now
 	end
 
-	healthBarTextObj = frame.Health.value or frame.Health.text
+	healthBarTextObj = parentBar.value or parentBar.text
 	if(healthBarTextObj)then
 		fontName, fontHeight, fontFlags = healthBarTextObj:GetFont()
 	else
